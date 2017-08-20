@@ -8,6 +8,8 @@ import h5py
 from datetime import datetime
 import sys
 import os
+from multiprocessing import Pool
+from functools import partial
 
 seq_len = int(sys.argv[1])
 label_num = int(sys.argv[2])
@@ -83,6 +85,24 @@ def search(target_time, forex_raw_data):
         else:
             end = mid - 1
 
+def plot(data, interval):
+
+    for i in range(interval[0], interval[1]):
+        start = i - seq_len 
+        end = i 
+
+        if(data[end, idx_time] - data[start, idx_time] != seq_len * 60.0):
+            continue
+
+        plt.figure(figsize=(0.3, 0.3))
+        plt.axis("off")
+        plt.plot(data[start:end, -1])
+        fileName = "gen/%s/%d.png" % (prefix, i)
+        plt.savefig(fileName)
+        plt.close()
+
+    print("[%s] Done gen/%s/%d~%d.png" % (datetime.now(), prefix, interval[0], interval[1]))
+
 def load_pic(raw_data_num):
     pics = []
     for i in range(seq_len, raw_data_num):
@@ -148,9 +168,30 @@ def main():
     #compute relative close price with time-matched data
     not_match_cnt, gold_raw_data, mask = relative_gold_forex(gold_raw_data, forex_raw_data)
 
-    diffs = compute_diffs(gold_raw_data)
+    gold_raw_bkp = gold_raw_bkp[mask]
+    diffs = compute_diffs(gold_raw_bkp)
     print(gold_raw_data.shape[0], diffs.shape[0])
 
+    #slicing interval
+    batch_size = 16384
+    sliced_idx = []
+    for i in range(seq_len, gold_raw_data.shape[0], batch_size):
+        sliced_idx.append(i)
+    sliced_idx.append(gold_raw_data.shape[0])
+
+    #making subprocess arg
+    subprocess_arg = []
+    for i in range(len(sliced_idx)-1):
+        subprocess_arg.append([sliced_idx[i], sliced_idx[i+1]])
+    p = Pool(12)
+    func = partial(plot, gold_raw_data)
+    p.map(func, subprocess_arg)
+    p.close()
+    p.join()
+
+    print("There are %d data not match between gold and forex" % not_match_cnt)
+
+    """
     #make train and test dataset
     pics = load_pic(gold_raw_data.shape[0])
     pics, diffs = unison_shuffled_copies(pics, diffs)
@@ -166,5 +207,6 @@ def main():
     #write to hdf5 file
     write_HDF5(train_data, train_label, "trainset")
     write_HDF5(test_data, test_label, "testset")
+    """
 main()   
     
