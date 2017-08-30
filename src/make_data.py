@@ -11,22 +11,18 @@ import os
 
 seq_len = int(sys.argv[1])
 label_num = int(sys.argv[2])
-kind = "gold_forex"
+kind = "raw"
 prefix = "%s/%dmin" % (kind, seq_len)
 
 idx_time = 0
 idx_close = 1
 
 def load_raw_data():
-    gold_raw_data = np.loadtxt("data/XAUUSD_small.csv", delimiter=" ")
+    gold_raw_data = np.loadtxt("data/XAUUSD.csv", delimiter=" ")
     gold_raw_data = gold_raw_data[:, [0, -2]]
     gold_raw_data = remove_duplicate(gold_raw_data)
 
-    forex_raw_data = np.loadtxt("data/EURUSD_small.csv", delimiter=" ")
-    forex_raw_data = forex_raw_data[:, [0, -2]]
-    forex_raw_data = remove_duplicate(forex_raw_data)
-
-    return gold_raw_data, forex_raw_data
+    return gold_raw_data
 
 def remove_duplicate(data):
     
@@ -36,52 +32,38 @@ def remove_duplicate(data):
     return data
 
 def compute_diffs(data):
+    interval_avg = compute_interval_avg(data)
+
     diffs = []
+    for i in range(0, interval_avg.shape[0]-seq_len):
+        start = i
+        end = i + seq_len
+
+        if(interval_avg[end, idx_time] - interval_avg[start, idx_time] != seq_len * 60.0):
+            continue
+
+        diff = interval_avg[end, idx_close] - interval_avg[start, idx_close]
+        percent = diff / interval_avg[start, idx_close]
+        diffs.append([interval_avg[start, idx_time], percent])
+
+    diffs = np.array(diffs)
+    return diffs
+
+def compute_interval_avg(data):
+    avgs = []
 
     for i in range(seq_len, data.shape[0]):
         start = i - seq_len
         end = i
 
-        if(data[end, idx_time] - data[start, idx_time] != seq_len * 60.0):
+        if(data[end, idx_time] - data[start, idx_time] != seq_len * 60):
             continue
 
-        diff = data[i][idx_close] - data[i-1][idx_close]
-        percent = diff/data[i-1][idx_time]
-        diffs.append(percent)
+        avg = np.mean(data[start:end, idx_close])
+        avgs.append([data[end, idx_time], avg])
 
-    diffs = np.array(diffs)
-
-    return diffs
-                                               
-def relative_gold_forex(gold_raw_data, forex_raw_data):
-
-    not_match_cnt = 0
-    idxs = []
-
-    for i in range(gold_raw_data.shape[0]):
-        idx = search(gold_raw_data[i, idx_time], forex_raw_data) 
-        if(idx != None):
-            gold_raw_data[i, idx_close] /= forex_raw_data[idx, idx_close]
-            idxs.append(i)
-        else:
-            not_match_cnt += 1
-
-    return not_match_cnt, gold_raw_data[idxs], np.array(idxs)
-
-def search(target_time, forex_raw_data):
-    start = 0
-    end = forex_raw_data.shape[0] - 1
-
-    while(start <= end):
-        mid = (start + end) // 2
-        current_time = forex_raw_data[mid, idx_time]
-
-        if(current_time == target_time):
-            return mid
-        if(current_time < target_time):
-            start = mid + 1
-        else:
-            end = mid - 1
+    avgs = np.array(avgs)
+    return avgs
 
 def load_pic(raw_data_num):
     pics = []
@@ -101,7 +83,7 @@ def load_pic(raw_data_num):
     return pics
 
 def compute_bounds(train_diffs):
-    tmp = np.copy(train_diffs)
+    tmp = np.copy(train_diffs[:, idx_close])
     tmp = np.sort(tmp)
     bounds = np.linspace(0, tmp.shape[0], num=label_num+1, dtype=np.int)#n + 1 point -> n range
     bounds[-1] -= 1
@@ -115,7 +97,7 @@ def make_label(diffs, bounds):
     for diff in diffs:
         find = False
         for i in range(bounds.shape[0]-1):
-            if(diff >= bounds[i] and diff < bounds[i+1]):
+            if(diff[idx_close] >= bounds[i] and diff[idx_close] < bounds[i+1]):
                 label.append(i)
                 find = True
                 break
@@ -142,14 +124,9 @@ def write_HDF5(pics, label, name):
     dataset.close()
 
 def main():
-    gold_raw_data, forex_raw_data = load_raw_data()
-    gold_raw_bkp = np.copy(gold_raw_data)
-
-    #compute relative close price with time-matched data
-    not_match_cnt, gold_raw_data, mask = relative_gold_forex(gold_raw_data, forex_raw_data)
+    gold_raw_data = load_raw_data()
 
     diffs = compute_diffs(gold_raw_data)
-    print(gold_raw_data.shape[0], diffs.shape[0])
 
     #make train and test dataset
     pics = load_pic(gold_raw_data.shape[0])
