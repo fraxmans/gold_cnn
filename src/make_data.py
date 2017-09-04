@@ -19,7 +19,7 @@ idx_close = 1
 
 def load_raw_data():
     gold_raw_data = np.loadtxt("data/XAUUSD.csv", delimiter=" ")
-    gold_raw_data = gold_raw_data[:, [0, -2]]
+    gold_raw_data = gold_raw_data[:, [0, -1]]
     gold_raw_data = remove_duplicate(gold_raw_data)
 
     return gold_raw_data

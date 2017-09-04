@@ -13,9 +13,9 @@ from tflearn.objectives import softmax_categorical_crossentropy
 
 seq_len = 5
 label_num = 5
-run_id = "raw/%dmin-%dlabel" % (seq_len, label_num)
+run_id = "raw-avg/%dmin-%dlabel" % (seq_len, label_num)
 batch_size = 256
-epoch_num = 3000
+epoch_num = 300
 learning_rate = 0.05
 
 def load_data():
